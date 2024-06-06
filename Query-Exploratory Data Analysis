@@ -1,0 +1,166 @@
+-- EDA (Exploratory Data Analysis)
+-- Di sini akan mengeksplorasi data dan menemukan tren atau pola atau sesuatu yang menarik seperti outlier
+--Dalam konteks ini, kita akan melihat: 
+
+-- Statistik deskriptif dasar.
+-- Perusahaan dengan PHK terbesar.
+-- Tren PHK berdasarkan lokasi, negara, tahun, industri, dan tahap pendanaan.
+-- Perusahaan dengan PHK terbanyak per tahun.
+-- Total PHK kumulatif per bulan.
+
+
+SELECT * FROM world_layoffs.layoffs_staging2;
+
+-- Kueri sederhana untuk mendapatkan jumlah maksimum orang yang diberhentikan
+SELECT MAX(total_laid_off) FROM world_layoffs.layoffs_staging2;
+
+-- Melihat persentase untuk melihat seberapa besar pemutusan hubungan kerja ini
+SELECT MAX(percentage_laid_off), MIN(percentage_laid_off)
+FROM world_layoffs.layoffs_staging2
+WHERE
+    percentage_laid_off IS NOT NULL;
+
+-- Menemukan perusahaan yang memiliki 100 persen karyawan yang diberhentikan
+SELECT *
+FROM world_layoffs.layoffs_staging2
+WHERE
+    percentage_laid_off = 1;
+-- Ini kebanyakan adalah startup yang sepertinya bangkrut selama waktu ini.
+
+-- Mengurutkan berdasarkan dana yang dikumpulkan untuk melihat seberapa besar beberapa perusahaan ini
+SELECT *
+FROM world_layoffs.layoffs_staging2
+WHERE
+    percentage_laid_off = 1
+ORDER BY funds_raised_millions DESC;
+-- BritishVolt tampaknya adalah perusahaan EV, Quibi! wow mengumpulkan sekitar 2 miliar dolar dan bangkrut
+
+-- Kueri menggunakan GROUP BY
+-- Perusahaan dengan jumlah pemutusan hubungan kerja terbesar dalam satu hari
+SELECT company, total_laid_off
+FROM world_layoffs.layoffs_staging
+ORDER BY 2 DESC
+LIMIT 5;
+
+-- Perusahaan dengan total pemutusan hubungan kerja terbanyak
+SELECT company, SUM(total_laid_off)
+FROM world_layoffs.layoffs_staging2
+GROUP BY
+    company
+ORDER BY 2 DESC
+LIMIT 10;
+
+-- Berdasarkan lokasi
+SELECT location, SUM(total_laid_off)
+FROM world_layoffs.layoffs_staging2
+GROUP BY
+    location
+ORDER BY 2 DESC
+LIMIT 10;
+
+-- Ini adalah total dalam 3 tahun terakhir atau dalam dataset
+SELECT country, SUM(total_laid_off)
+FROM world_layoffs.layoffs_staging2
+GROUP BY
+    country
+ORDER BY 2 DESC;
+
+-- Total pemutusan hubungan kerja per tahun
+SELECT YEAR(date), SUM(total_laid_off)
+FROM world_layoffs.layoffs_staging2
+GROUP BY
+    YEAR(date)
+ORDER BY 1 ASC;
+
+-- Berdasarkan industri
+SELECT industry, SUM(total_laid_off)
+FROM world_layoffs.layoffs_staging2
+GROUP BY
+    industry
+ORDER BY 2 DESC;
+
+-- Berdasarkan tahap perkembangan perusahaan
+SELECT stage, SUM(total_laid_off)
+FROM world_layoffs.layoffs_staging2
+GROUP BY
+    stage
+ORDER BY 2 DESC;
+
+-- Melihat perusahaan dengan pemutusan hubungan kerja terbanyak per tahun
+WITH
+    Company_Year AS (
+        SELECT
+            company,
+            YEAR(date) AS years,
+            SUM(total_laid_off) AS total_laid_off
+        FROM layoffs_staging2
+        GROUP BY
+            company,
+            YEAR(date)
+    ),
+    Company_Year_Rank AS (
+        SELECT
+            company,
+            years,
+            total_laid_off,
+            DENSE_RANK() OVER (
+                PARTITION BY
+                    years
+                ORDER BY total_laid_off DESC
+            ) AS ranking
+        FROM Company_Year
+    )
+SELECT
+    company,
+    years,
+    total_laid_off,
+    ranking
+FROM Company_Year_Rank
+WHERE
+    ranking <= 3
+    AND years IS NOT NULL
+ORDER BY years ASC, total_laid_off DESC;
+
+-- Total bergulir pemutusan hubungan kerja per bulan
+SELECT SUBSTRING(date, 1, 7) as dates, SUM(total_laid_off) AS total_laid_off
+FROM layoffs_staging2
+GROUP BY
+    dates
+ORDER BY dates ASC;
+
+-- Menggunakan CTE (Common Table Expression) untuk membuat total bergulir 
+WITH
+    DATE_CTE AS (
+        SELECT SUBSTRING(date, 1, 7) as dates, SUM(total_laid_off) AS total_laid_off
+        FROM layoffs_staging2
+        GROUP BY
+            dates
+        ORDER BY dates ASC
+    )
+SELECT
+    dates,
+    SUM(total_laid_off) OVER (
+        ORDER BY dates ASC
+    ) as rolling_total_layoffs
+FROM DATE_CTE
+ORDER BY dates ASC;
+
+
+## Exploratory Data Analysis (EDA): 
+
+-- SELECT * FROM world_layoffs.layoffs_staging2: Menampilkan semua data dari tabel layoffs_staging2.
+-- SELECT MAX(total_laid_off): Menampilkan jumlah maksimum dari total karyawan yang diberhentikan.
+-- SELECT MAX(percentage_laid_off), MIN(percentage_laid_off): Menampilkan persentase maksimum dan minimum dari karyawan yang diberhentikan, dengan filter percentage_laid_off tidak boleh null.
+-- SELECT * WHERE percentage_laid_off = 1: Menampilkan semua data di mana 100% karyawan diberhentikan.
+-- ORDER BY funds_raised_millions DESC: Mengurutkan data berdasarkan dana yang dikumpulkan, dari yang terbesar ke terkecil.
+
+## Kueri dengan GROUP BY:
+-- SELECT company, total_laid_off ORDER BY 2 DESC LIMIT 5: Menampilkan perusahaan dengan jumlah karyawan terbanyak yang diberhentikan dalam satu hari, diurutkan secara menurun dan dibatasi 5 hasil.
+-- SUM(total_laid_off) GROUP BY company: Menampilkan total pemutusan hubungan kerja per perusahaan, diurutkan dari terbesar ke terkecil, dibatasi 10 hasil.
+-- GROUP BY location, country, YEAR(date), industry, stage: Menampilkan total pemutusan hubungan kerja berdasarkan lokasi, negara, tahun, industri, dan tahap perkembangan perusahaan.
+
+## Kueri yang lebih sulit dengan CTE:
+-- WITH Company_Year AS: Membuat tabel sementara Company_Year untuk menyimpan total pemutusan hubungan kerja per perusahaan per tahun.
+-- DENSE_RANK() OVER (PARTITION BY years ORDER BY total_laid_off DESC): Memberikan peringkat pada perusahaan berdasarkan total pemutusan hubungan kerja setiap tahun.
+-- WITH DATE_CTE AS: Membuat tabel sementara DATE_CTE untuk menyimpan total pemutusan hubungan kerja per bulan.
+-- SUM(total_laid_off) OVER (ORDER BY dates ASC): Menghitung total bergulir pemutusan hubungan kerja berdasarkan tanggal.
